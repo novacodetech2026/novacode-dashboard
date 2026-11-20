@@ -1,0 +1,6 @@
+{
+  "name": "Novacode Tech — Business Automation Dashboard",
+  "description": "Multi-tenant SaaS platform for service businesses to automate customer conversations, schedule appointments, and manage daily operations with AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

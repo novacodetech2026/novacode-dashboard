@@ -1,0 +1,88 @@
+import React from 'react';
+import {
+  Sparkles,
+  HeartHandshake,
+  Flower2,
+  Scissors,
+  Palette,
+  Stethoscope,
+  Leaf,
+  PenTool,
+  Dumbbell,
+  Activity,
+  HeartPulse,
+  Apple,
+  Briefcase,
+  Calculator,
+  Scale,
+  TrendingUp,
+  Shield,
+  Megaphone,
+  Camera,
+  Compass,
+  Home,
+  Wrench,
+  Zap,
+  Wind,
+  Trees,
+  Hammer,
+  Bug,
+  Truck,
+  Car,
+  GraduationCap,
+  Languages,
+  Music,
+  BookOpen,
+  PawPrint,
+  CalendarHeart,
+  Building2,
+} from 'lucide-react';
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  Sparkles,
+  HeartHandshake,
+  Flower2,
+  Scissors,
+  Palette,
+  Stethoscope,
+  Leaf,
+  PenTool,
+  Dumbbell,
+  Activity,
+  HeartPulse,
+  Apple,
+  Briefcase,
+  Calculator,
+  Scale,
+  TrendingUp,
+  Shield,
+  Megaphone,
+  Camera,
+  Compass,
+  Home,
+  Wrench,
+  Zap,
+  Wind,
+  Trees,
+  Hammer,
+  Bug,
+  Truck,
+  Car,
+  GraduationCap,
+  Languages,
+  Music,
+  BookOpen,
+  PawPrint,
+  CalendarHeart,
+  Building2,
+};
+
+interface CategoryIconProps {
+  iconName: string;
+  className?: string;
+}
+
+export const CategoryIcon: React.FC<CategoryIconProps> = ({ iconName, className = 'w-4 h-4' }) => {
+  const Icon = ICON_MAP[iconName] || Briefcase;
+  return <Icon className={className} />;
+};
