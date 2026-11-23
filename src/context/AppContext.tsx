@@ -378,11 +378,11 @@ interface AppContextType {
 
   // Operations
   addAppointment: (appData: Omit<Appointment, 'id' | 'createdAt' | 'tenantId'>) => Promise<{ success: boolean; error?: string; appointment?: Appointment }>;
-  updateAppointmentStatus: (appointmentId: string, status: AppointmentStatus) => Promise<void>;
+  updateAppointmentStatus: (appointmentId: string, status: AppointmentStatus) => Promise<{ success: boolean; error?: string }>;
   rescheduleAppointment: (appointmentId: string, newDate: string, newStartTime: string) => Promise<{ success: boolean; error?: string }>;
   cancelAppointment: (appointmentId: string) => Promise<{ success: boolean; error?: string }>;
   addCustomer: (custData: Omit<Customer, 'id' | 'createdAt' | 'tenantId' | 'totalAppointments' | 'lastInteractionAt'>) => Promise<Customer>;
-  updateCustomerNotes: (customerId: string, notes: string) => Promise<void>;
+  updateCustomerNotes: (customerId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
   addService: (svcData: Omit<Service, 'id' | 'tenantId'>) => Promise<{ success: boolean; error?: string }>;
   updateService: (service: Service) => Promise<{ success: boolean; error?: string }>;
   isBookingConflict: (date: string, startTime: string, durationMinutes: number, staffId?: string, excludeAppointmentId?: string) => boolean;
@@ -2056,6 +2056,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Multi-tenant selection (clears stale business state immediately before loading next business)
   const setCurrentTenantId = (tenantId: string) => {
     setSelectedAppointmentForDetail(null);
+    setIsNewBookingModalOpen(false);
     setLiveAppointments([]);
     setLiveCustomers([]);
     setLiveServices([]);
@@ -3786,20 +3787,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Update Status
-  const updateAppointmentStatus = async (appointmentId: string, status: AppointmentStatus) => {
+  const updateAppointmentStatus = async (
+    appointmentId: string,
+    status: AppointmentStatus
+  ): Promise<{ success: boolean; error?: string }> => {
     const sourceList = mode === 'supabase' ? liveAppointments : appointments;
     const targetApt = sourceList.find(a => a.id === appointmentId);
 
     if (targetApt && targetApt.tenantId && targetApt.tenantId !== currentTenant.id) {
-      addToast('error', t.common.error, 'Cross-tenant access denied.');
-      return;
+      const errMsg =
+        language === 'es'
+          ? 'No tienes permiso para modificar citas de otro negocio.'
+          : 'Cross-tenant access denied.';
+      addToast('error', t.common.error, errMsg);
+      return { success: false, error: errMsg };
     }
 
     if (status === 'cancelled' && targetApt) {
       const cancelCheck = validateCancellationWindow(targetApt, currentTenant);
       if (!cancelCheck.allowed) {
-        addToast('error', t.common.error, formatCancellationValidationError(cancelCheck, language));
-        return;
+        const errMsg = formatCancellationValidationError(cancelCheck, language);
+        addToast('error', t.common.error, errMsg);
+        return { success: false, error: errMsg };
       }
     }
 
@@ -3820,21 +3829,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         service: targetService,
       });
       if (!reopenCheck.valid) {
-        addToast('error', t.common.error, formatBookingValidationError(reopenCheck, language));
-        return;
+        const errMsg = formatBookingValidationError(reopenCheck, language);
+        addToast('error', t.common.error, errMsg);
+        return { success: false, error: errMsg };
       }
     }
 
     if (mode === 'supabase') {
       if (!supabaseConfig.isConnected || !currentUser || hasNoBusinessMembership || !currentTenant.id) {
-        addToast(
-          'error',
-          t.common.error,
+        const errMsg =
           language === 'es'
             ? 'Debes iniciar sesión con un negocio autorizado.'
-            : 'You must be signed in to an authorized business.'
-        );
-        return;
+            : 'You must be signed in to an authorized business.';
+        addToast('error', t.common.error, errMsg);
+        return { success: false, error: errMsg };
       }
 
       const res = status === 'cancelled'
@@ -3851,7 +3859,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           businessName: currentTenant.name,
         });
         addToast('error', t.common.error, sanitized.userMessage);
-        return;
+        return { success: false, error: sanitized.userMessage };
       }
       setLiveAppointments(prev => prev.map(a => a.id === appointmentId ? { ...a, status } : a));
       if (isSuperAdmin && currentTenant.id) {
@@ -3899,6 +3907,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       language === 'es' ? 'Estado Actualizado' : 'Status Updated',
       `${language === 'es' ? statusMapEs[status] : statusMapEn[status]}`
     );
+    return { success: true };
   };
 
   // Reschedule (preserves existing appointment status rather than auto-confirming pending bookings)
@@ -4193,7 +4202,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: true };
     }
 
-    await updateAppointmentStatus(appointmentId, 'cancelled');
+    const statusRes = await updateAppointmentStatus(appointmentId, 'cancelled');
+    if (!statusRes.success) {
+      return statusRes;
+    }
     if (selectedAppointmentForDetail && selectedAppointmentForDetail.id === appointmentId) {
       setSelectedAppointmentForDetail(null);
     }
@@ -4260,22 +4272,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newCust;
   };
 
-  const updateCustomerNotes = async (customerId: string, notes: string) => {
+  const updateCustomerNotes = async (
+    customerId: string,
+    notes: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const sourceCustomers = mode === 'supabase' ? liveCustomers : customers;
+    const targetCustomer = sourceCustomers.find(c => c.id === customerId);
+    if (targetCustomer && targetCustomer.tenantId && targetCustomer.tenantId !== currentTenant.id) {
+      const errMsg =
+        language === 'es'
+          ? 'No tienes permiso para editar clientes de otro negocio.'
+          : 'Cross-tenant customer access is not permitted.';
+      addToast('error', t.common.error, errMsg);
+      return { success: false, error: errMsg };
+    }
+
     if (mode === 'supabase') {
       if (!supabaseConfig.isConnected || !currentUser || hasNoBusinessMembership || !currentTenant.id) {
-        addToast(
-          'error',
-          t.common.error,
+        const errMsg =
           language === 'es'
             ? 'Debes iniciar sesión con un negocio autorizado para editar clientes.'
-            : 'You must be signed in to an authorized business to update customers.'
-        );
-        return;
+            : 'You must be signed in to an authorized business to update customers.';
+        addToast('error', t.common.error, errMsg);
+        return { success: false, error: errMsg };
       }
       const res = await updateCustomerNotesInSupabase(currentTenant.id, customerId, notes);
       if (!res.success) {
-        addToast('error', t.common.error, res.error || 'Failed to save customer notes.');
-        return;
+        const sanitized = sanitizeErrorForBusiness(res.error || 'Failed to save customer notes.', language);
+        addToast('error', t.common.error, sanitized.userMessage);
+        return { success: false, error: sanitized.userMessage };
       }
       setLiveCustomers(prev => prev.map(c => c.id === customerId ? { ...c, notes } : c));
       if (isSuperAdmin) {
@@ -4294,6 +4319,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       language === 'es' ? 'Notas Actualizadas' : 'Notes Saved',
       language === 'es' ? 'El perfil del cliente ha sido actualizado.' : 'Customer profile notes saved.'
     );
+    return { success: true };
   };
 
   // Add / Update Services (Business Owner or Super Admin)
@@ -4311,7 +4337,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!supabaseConfig.isConnected || !currentTenant.id) {
         return { success: false, error: 'No active Supabase business selected.' };
       }
-      const res = await createServiceInSupabase(currentTenant.id, resolvedSvcData);
+      const res = await createServiceInSupabase(currentTenant.id, resolvedSvcData, language);
       if (!res.success || !res.service) {
         return { success: false, error: res.error || 'Failed to create service.' };
       }
@@ -4325,7 +4351,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           metadata: { name_en: res.service.nameEn, price: res.service.price, currency: res.service.currency },
         });
       }
-      addToast('success', t.common.success, res.service.nameEn);
+      addToast('success', t.common.success, language === 'es' ? res.service.nameEs || res.service.nameEn : res.service.nameEn || res.service.nameEs);
       return { success: true };
     }
 
@@ -4337,13 +4363,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString(),
     };
     setServices(prev => [...prev, newService]);
-    addToast('success', t.common.success, language === 'es' ? newService.nameEs : newService.nameEn);
+    addToast('success', t.common.success, language === 'es' ? newService.nameEs || newService.nameEn : newService.nameEn || newService.nameEs);
     return { success: true };
   };
 
   const updateService = async (updatedService: Service): Promise<{ success: boolean; error?: string }> => {
     if (!canManageServices) {
       return { success: false, error: 'Insufficient permissions to update services.' };
+    }
+
+    if (updatedService.tenantId && currentTenant.id && updatedService.tenantId !== currentTenant.id) {
+      return {
+        success: false,
+        error:
+          language === 'es'
+            ? 'No puedes modificar servicios de otro negocio.'
+            : 'Cross-tenant service modification is not allowed.',
+      };
     }
 
     const resolvedService: Service = {
@@ -4357,7 +4393,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!supabaseConfig.isConnected || !currentTenant.id) {
         return { success: false, error: 'No active Supabase business selected.' };
       }
-      const res = await updateServiceInSupabase({ ...resolvedService, tenantId: currentTenant.id });
+      const res = await updateServiceInSupabase({ ...resolvedService, tenantId: currentTenant.id }, language);
       if (!res.success || !res.service) {
         return { success: false, error: res.error || 'Failed to update service.' };
       }
@@ -4376,12 +4412,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           },
         });
       }
-      addToast('success', t.common.success, res.service.nameEn);
+      addToast('success', t.common.success, language === 'es' ? res.service.nameEs || res.service.nameEn : res.service.nameEn || res.service.nameEs);
       return { success: true };
     }
 
     setServices(prev => prev.map(s => s.id === resolvedService.id ? resolvedService : s));
-    addToast('success', t.common.success, language === 'es' ? resolvedService.nameEs : resolvedService.nameEn);
+    addToast('success', t.common.success, language === 'es' ? resolvedService.nameEs || resolvedService.nameEn : resolvedService.nameEn || resolvedService.nameEs);
     return { success: true };
   };
 

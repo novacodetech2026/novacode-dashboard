@@ -240,12 +240,12 @@ export const CalendarView: React.FC = () => {
       <div className="p-4 lg:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
         {/* Row 1: Date Header, Navigation & View Switcher */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-3">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 capitalize tracking-tight">
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-3 min-w-0">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 capitalize tracking-tight break-words">
                 {formattedDateHeader}
               </h1>
-              <p className="text-xs lg:text-[11px] font-mono tabular-nums text-slate-400 mt-0.5">
+              <p className="text-xs lg:text-[11px] font-mono tabular-nums text-slate-400 mt-0.5 truncate">
                 {currentTenant.timezone}
               </p>
             </div>
@@ -630,7 +630,7 @@ export const CalendarView: React.FC = () => {
           {viewMode === 'day' && (
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 lg:p-6 space-y-4 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
-                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 capitalize">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 capitalize min-w-0 break-words">
                   {formatReadableDate(anchorDateStr, language, {
                     weekday: 'long',
                     month: 'long',

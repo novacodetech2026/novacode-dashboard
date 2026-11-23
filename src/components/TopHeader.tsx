@@ -206,7 +206,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
         {headerRoleLabel && (
           <span
             title={canViewPlatformAdmin && authDiagnosticError ? authDiagnosticError : headerRoleLabel || undefined}
-            className={`inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-1 rounded-lg text-xs lg:text-[11px] font-semibold border whitespace-nowrap max-w-[100px] sm:max-w-none truncate ${
+            className={`hidden sm:inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-1 rounded-lg text-xs lg:text-[11px] font-semibold border whitespace-nowrap max-w-[140px] md:max-w-none truncate ${
               currentUser?.isSuperAdmin || effectiveRole === 'super_admin'
                 ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
                 : isSuperAdminCheckFailed
@@ -251,7 +251,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
       </div>
 
       {/* Zone 3: Notifications + Global EN/ES Switcher + Primary CTA */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Notifications Bell */}
         <div className="relative">
           <button
@@ -737,7 +737,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
           <button
             type="button"
             onClick={() => setLanguage('en')}
-            className={`min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 px-2.5 py-1.5 lg:py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`min-h-[44px] min-w-[40px] lg:min-h-0 lg:min-w-0 px-2 sm:px-2.5 py-1.5 lg:py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               language === 'en'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
@@ -748,7 +748,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
           <button
             type="button"
             onClick={() => setLanguage('es')}
-            className={`min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 px-2.5 py-1.5 lg:py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`min-h-[44px] min-w-[40px] lg:min-h-0 lg:min-w-0 px-2 sm:px-2.5 py-1.5 lg:py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               language === 'es'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs ring-1 ring-slate-900/5 dark:ring-white/10'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
@@ -762,7 +762,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
         <button
           type="button"
           onClick={() => setIsNewBookingModalOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm lg:text-xs font-semibold shadow-xs active:scale-[0.98] transition-all whitespace-nowrap min-h-[44px] lg:min-h-[38px]"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm lg:text-xs font-semibold shadow-xs active:scale-[0.98] transition-all whitespace-nowrap min-h-[44px] lg:min-h-[38px]"
         >
           <Plus className="w-4 h-4 shrink-0" />
           <span className="hidden sm:inline">{t.dashboard.newAppointment}</span>

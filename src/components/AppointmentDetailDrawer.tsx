@@ -42,12 +42,17 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   useEffect(() => {
     setCancelError(null);
+    setStatusError(null);
     setShowCancelConfirm(false);
-  }, [appointment?.id]);
+    setIsUpdatingStatus(false);
+    setIsCancelling(false);
+  }, [appointment?.id, appointment?.status]);
 
   if (!appointment) return null;
 
@@ -74,23 +79,42 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
     online_widget: t.appointment.sourceWidget,
   };
 
-  const handleConfirm = () => {
-    updateAppointmentStatus(appointment.id, 'confirmed');
+  const runStatusUpdate = async (nextStatus: Appointment['status']) => {
+    if (isUpdatingStatus || isCancelling) return;
+    setStatusError(null);
+    setIsUpdatingStatus(true);
+    try {
+      const res = (await updateAppointmentStatus(appointment.id, nextStatus)) as
+        | { success?: boolean; error?: string }
+        | void;
+      if (res && res.success === false) {
+        setStatusError(
+          res.error ||
+            (language === 'es'
+              ? 'No se pudo actualizar el estado de la cita.'
+              : 'Unable to update appointment status.')
+        );
+      }
+    } catch (err: unknown) {
+      setStatusError(
+        err instanceof Error
+          ? err.message
+          : language === 'es'
+          ? 'No se pudo actualizar el estado de la cita.'
+          : 'Unable to update appointment status.'
+      );
+    } finally {
+      setIsUpdatingStatus(false);
+    }
   };
 
-  const handleComplete = () => {
-    updateAppointmentStatus(appointment.id, 'completed');
-  };
-
-  const handleMarkNoShow = () => {
-    updateAppointmentStatus(appointment.id, 'no_show');
-  };
-
-  const handleReactivate = () => {
-    updateAppointmentStatus(appointment.id, 'confirmed');
-  };
+  const handleConfirm = () => runStatusUpdate('confirmed');
+  const handleComplete = () => runStatusUpdate('completed');
+  const handleMarkNoShow = () => runStatusUpdate('no_show');
+  const handleReactivate = () => runStatusUpdate('confirmed');
 
   const handleCancel = async () => {
+    if (isCancelling || isUpdatingStatus) return;
     setCancelError(null);
     setIsCancelling(true);
     try {
@@ -199,7 +223,7 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
               </div>
 
               {appointment.notes && (
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-sm lg:text-xs text-slate-600 dark:text-slate-400 bg-amber-50/50 dark:bg-amber-950/20 p-2.5 rounded-lg">
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-sm lg:text-xs text-slate-600 dark:text-slate-400 bg-amber-50/50 dark:bg-amber-950/20 p-2.5 rounded-lg break-words">
                   <span className="font-semibold text-amber-800 dark:text-amber-400 block text-xs lg:text-[11px] mb-0.5">
                     {t.appointment.notes}:
                   </span>
@@ -233,7 +257,7 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
                   </>
                 )}
               </div>
-              <p className="text-sm lg:text-xs text-slate-600 dark:text-slate-400 pl-6">
+              <p className="text-sm lg:text-xs text-slate-600 dark:text-slate-400 pl-6 break-words">
                 {appointment.locationType === 'at_home' 
                   ? (appointment.address || t.appointment.addressProvidedByClient) 
                   : appointment.locationType === 'online'
@@ -321,10 +345,17 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
             </div>
           ) : (
             <>
+              {statusError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-xs font-medium text-rose-700 dark:text-rose-200 break-words">
+                  {statusError}
+                </div>
+              )}
               {appointment.status === 'cancelled' || appointment.status === 'no_show' ? (
                 <button
+                  type="button"
+                  disabled={isUpdatingStatus}
                   onClick={handleReactivate}
-                  className="w-full min-h-[44px] lg:min-h-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-sm lg:text-xs font-semibold transition-colors"
+                  className="w-full min-h-[44px] lg:min-h-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 disabled:opacity-50 text-white text-sm lg:text-xs font-semibold transition-colors"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>{t.appointment.reopenAction}</span>
@@ -333,8 +364,10 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
                 <div className="grid grid-cols-2 gap-2">
                   {appointment.status === 'pending' && (
                     <button
+                      type="button"
+                      disabled={isUpdatingStatus}
                       onClick={handleConfirm}
-                      className="col-span-2 min-h-[44px] lg:min-h-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm lg:text-xs font-semibold shadow-sm transition-colors"
+                      className="col-span-2 min-h-[44px] lg:min-h-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm lg:text-xs font-semibold shadow-sm transition-colors"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>{t.appointment.confirmAction}</span>
@@ -344,15 +377,19 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
                   {appointment.status === 'confirmed' && (
                     <>
                       <button
+                        type="button"
+                        disabled={isUpdatingStatus}
                         onClick={handleComplete}
-                        className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm lg:text-xs font-semibold shadow-sm transition-colors"
+                        className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm lg:text-xs font-semibold shadow-sm transition-colors"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{t.appointment.completeAction}</span>
                       </button>
                       <button
+                        type="button"
+                        disabled={isUpdatingStatus}
                         onClick={handleMarkNoShow}
-                        className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-sm lg:text-xs font-semibold transition-colors"
+                        className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/60 disabled:opacity-50 text-rose-700 dark:text-rose-300 text-sm lg:text-xs font-semibold transition-colors"
                       >
                         <AlertTriangle className="w-3.5 h-3.5" />
                         <span>{t.appointment.markNoShowAction}</span>
@@ -361,16 +398,20 @@ export const AppointmentDetailDrawer: React.FC<AppointmentDetailDrawerProps> = (
                   )}
 
                   <button
+                    type="button"
+                    disabled={isUpdatingStatus}
                     onClick={() => setIsRescheduleOpen(true)}
-                    className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 lg:py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm lg:text-xs font-semibold transition-colors"
+                    className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 lg:py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 text-slate-700 dark:text-slate-200 text-sm lg:text-xs font-semibold transition-colors"
                   >
                     <CalendarClock className="w-3.5 h-3.5 text-slate-500" />
                     <span>{t.appointment.rescheduleAction}</span>
                   </button>
 
                   <button
+                    type="button"
+                    disabled={isUpdatingStatus}
                     onClick={() => setShowCancelConfirm(true)}
-                    className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 lg:py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-sm lg:text-xs font-semibold transition-colors"
+                    className="min-h-[44px] lg:min-h-0 flex items-center justify-center gap-1.5 px-3 py-2.5 lg:py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 disabled:opacity-50 text-sm lg:text-xs font-semibold transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                     <span>{t.appointment.cancelAction}</span>

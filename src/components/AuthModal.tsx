@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   X, 
@@ -10,7 +10,9 @@ import {
   RefreshCw,
   ShieldCheck,
   CheckCircle2,
-  KeyRound
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { sanitizeErrorForBusiness } from '../utils/security';
 
@@ -48,11 +50,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const newPasswordInputRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [passwordUpdatedSuccess, setPasswordUpdatedSuccess] = useState(false);
   const [inviteActivatedSuccess, setInviteActivatedSuccess] = useState(false);
+
+  const togglePasswordVisibility = (
+    inputRef: React.RefObject<HTMLInputElement | null>,
+    setVisible: React.Dispatch<React.SetStateAction<boolean>>
+  ) => {
+    const input = inputRef.current;
+    const isFocused = typeof document !== 'undefined' && document.activeElement === input;
+    const selectionStart = input?.selectionStart ?? null;
+    const selectionEnd = input?.selectionEnd ?? null;
+    const selectionDirection = input?.selectionDirection ?? 'none';
+
+    setVisible(prev => !prev);
+
+    if (input && isFocused && selectionStart !== null && selectionEnd !== null) {
+      const restoreSelection = () => {
+        if (document.activeElement !== input) {
+          input.focus({ preventScroll: true });
+        }
+        try {
+          input.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+        } catch {
+          // Ignore browsers/inputs where selection restoration is unsupported
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(restoreSelection);
+      } else {
+        setTimeout(restoreSelection, 0);
+      }
+    }
+  };
 
   // Sync recovery or invitation onboarding mode detected from Supabase Auth / URL link
   useEffect(() => {
@@ -60,10 +97,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setAuthMode('invite');
       setAuthError(invitationError || null);
       setInviteActivatedSuccess(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
     } else if (isPasswordRecoveryMode) {
       setAuthMode('recovery');
       setAuthError(recoveryError || null);
       setPasswordUpdatedSuccess(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
     }
   }, [isInvitationOnboardingMode, invitationError, isPasswordRecoveryMode, recoveryError]);
 
@@ -74,6 +115,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setRecoveryError(null);
     setInvitationError(null);
     setResetEmailSent(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.replace(/\/+$/, '');
       if (path === '/reset-password' || path === '/accept-invite') {
@@ -129,6 +172,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           setPasswordUpdatedSuccess(true);
           setNewPassword('');
           setConfirmPassword('');
+          setShowNewPassword(false);
+          setShowConfirmPassword(false);
         } else {
           setAuthError(result.error || 'Failed to update password.');
         }
@@ -148,6 +193,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           setInviteActivatedSuccess(true);
           setNewPassword('');
           setConfirmPassword('');
+          setShowNewPassword(false);
+          setShowConfirmPassword(false);
         } else {
           setAuthError(result.error || 'Failed to activate business invitation.');
         }
@@ -322,16 +369,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       {t.auth.newPasswordLabel} *
                     </label>
                     <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3" />
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3 pointer-events-none" />
                       <input
-                        type="password"
+                        ref={newPasswordInputRef}
+                        type={showNewPassword ? 'text' : 'password'}
                         required
                         minLength={6}
                         placeholder="••••••••••••"
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-12 lg:pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                       />
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => togglePasswordVisibility(newPasswordInputRef, setShowNewPassword)}
+                        aria-label={
+                          showNewPassword
+                            ? language === 'es' ? 'Ocultar contraseña' : 'Hide password'
+                            : language === 'es' ? 'Mostrar contraseña' : 'Show password'
+                        }
+                        aria-pressed={showNewPassword}
+                        className="absolute inset-y-0 right-0 min-w-[44px] min-h-[44px] lg:min-w-[38px] lg:min-h-0 flex items-center justify-center rounded-r-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="w-4 h-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
@@ -340,16 +406,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       {t.auth.confirmPasswordLabel} *
                     </label>
                     <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3" />
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3 pointer-events-none" />
                       <input
-                        type="password"
+                        ref={confirmPasswordInputRef}
+                        type={showConfirmPassword ? 'text' : 'password'}
                         required
                         minLength={6}
                         placeholder="••••••••••••"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-12 lg:pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                       />
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => togglePasswordVisibility(confirmPasswordInputRef, setShowConfirmPassword)}
+                        aria-label={
+                          showConfirmPassword
+                            ? language === 'es' ? 'Ocultar confirmación de contraseña' : 'Hide confirm password'
+                            : language === 'es' ? 'Mostrar confirmación de contraseña' : 'Show confirm password'
+                        }
+                        aria-pressed={showConfirmPassword}
+                        className="absolute inset-y-0 right-0 min-w-[44px] min-h-[44px] lg:min-w-[38px] lg:min-h-0 flex items-center justify-center rounded-r-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="w-4 h-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
@@ -400,16 +485,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       {t.auth.newPasswordLabel} *
                     </label>
                     <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3" />
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3 pointer-events-none" />
                       <input
-                        type="password"
+                        ref={newPasswordInputRef}
+                        type={showNewPassword ? 'text' : 'password'}
                         required
                         minLength={6}
                         placeholder="••••••••••••"
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-12 lg:pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                       />
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => togglePasswordVisibility(newPasswordInputRef, setShowNewPassword)}
+                        aria-label={
+                          showNewPassword
+                            ? language === 'es' ? 'Ocultar contraseña' : 'Hide password'
+                            : language === 'es' ? 'Mostrar contraseña' : 'Show password'
+                        }
+                        aria-pressed={showNewPassword}
+                        className="absolute inset-y-0 right-0 min-w-[44px] min-h-[44px] lg:min-w-[38px] lg:min-h-0 flex items-center justify-center rounded-r-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="w-4 h-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
@@ -418,16 +522,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       {t.auth.confirmPasswordLabel} *
                     </label>
                     <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3" />
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 lg:top-3 pointer-events-none" />
                       <input
-                        type="password"
+                        ref={confirmPasswordInputRef}
+                        type={showConfirmPassword ? 'text' : 'password'}
                         required
                         minLength={6}
                         placeholder="••••••••••••"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                        className="w-full min-h-[44px] lg:min-h-0 pl-10 pr-12 lg:pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                       />
+                      <button
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => togglePasswordVisibility(confirmPasswordInputRef, setShowConfirmPassword)}
+                        aria-label={
+                          showConfirmPassword
+                            ? language === 'es' ? 'Ocultar confirmación de contraseña' : 'Hide confirm password'
+                            : language === 'es' ? 'Mostrar confirmación de contraseña' : 'Show confirm password'
+                        }
+                        aria-pressed={showConfirmPassword}
+                        className="absolute inset-y-0 right-0 min-w-[44px] min-h-[44px] lg:min-w-[38px] lg:min-h-0 flex items-center justify-center rounded-r-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="w-4 h-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="w-4 h-4" aria-hidden="true" />
+                        )}
+                      </button>
                     </div>
                   </div>
 

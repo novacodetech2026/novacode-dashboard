@@ -44,8 +44,8 @@ export const ServicesView: React.FC = () => {
   const [nameEs, setNameEs] = useState('');
   const [descriptionEn, setDescriptionEn] = useState('');
   const [descriptionEs, setDescriptionEs] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState(60);
-  const [price, setPrice] = useState(75);
+  const [durationMinutes, setDurationMinutes] = useState('60');
+  const [price, setPrice] = useState('75');
   const [currency, setCurrency] = useState(defaultCurrency);
   const [category, setCategory] = useState('General');
   const [allowsInBusiness, setAllowsInBusiness] = useState(true);
@@ -59,8 +59,8 @@ export const ServicesView: React.FC = () => {
     setNameEs('');
     setDescriptionEn('');
     setDescriptionEs('');
-    setDurationMinutes(60);
-    setPrice(75);
+    setDurationMinutes('60');
+    setPrice('75');
     setCurrency(defaultCurrency);
     setCategory('General');
     setAllowsInBusiness(true);
@@ -72,12 +72,12 @@ export const ServicesView: React.FC = () => {
 
   const openEditModal = (svc: Service) => {
     setEditingService(svc);
-    setNameEn(svc.nameEn);
-    setNameEs(svc.nameEs);
-    setDescriptionEn(svc.descriptionEn);
-    setDescriptionEs(svc.descriptionEs);
-    setDurationMinutes(svc.durationMinutes);
-    setPrice(svc.price);
+    setNameEn(svc.nameEn || '');
+    setNameEs(svc.nameEs || '');
+    setDescriptionEn(svc.descriptionEn || '');
+    setDescriptionEs(svc.descriptionEs || '');
+    setDurationMinutes(String(svc.durationMinutes || 60));
+    setPrice(String(svc.price ?? 0));
     setCurrency(normalizeCurrencyCode(svc.currency, defaultCurrency));
     setCategory(svc.category);
     setAllowsInBusiness(svc.allowsInBusiness);
@@ -89,8 +89,12 @@ export const ServicesView: React.FC = () => {
 
   const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     setFormError(null);
-    if (!nameEn.trim()) {
+
+    const trimmedEn = nameEn.trim();
+    const trimmedEs = nameEs.trim();
+    if (!trimmedEn && !trimmedEs) {
       setFormError(language === 'es' ? 'El nombre del servicio es obligatorio.' : 'Service name is required.');
       return;
     }
@@ -115,42 +119,54 @@ export const ServicesView: React.FC = () => {
       return;
     }
 
+    const resolvedNameEn = trimmedEn || trimmedEs;
+    const resolvedNameEs = trimmedEs || trimmedEn;
+    const trimmedDescEn = descriptionEn.trim();
+    const trimmedDescEs = descriptionEs.trim();
+    const resolvedDescEn = editingService ? trimmedDescEn : (trimmedDescEn || trimmedDescEs);
+    const resolvedDescEs = editingService ? trimmedDescEs : (trimmedDescEs || trimmedDescEn);
+
     setIsSaving(true);
-    const payload = {
-      nameEn: nameEn.trim(),
-      nameEs: (nameEs || nameEn).trim(),
-      descriptionEn: descriptionEn.trim(),
-      descriptionEs: (descriptionEs || descriptionEn).trim(),
-      durationMinutes: parsedDuration,
-      price: Number(parsedPrice.toFixed(2)),
-      currency: normalizeCurrencyCode(currency, defaultCurrency),
-      category: category.trim() || 'General',
-      allowsInBusiness,
-      allowsAtHome,
-      active,
-    };
+    try {
+      const payload = {
+        nameEn: resolvedNameEn,
+        nameEs: resolvedNameEs,
+        descriptionEn: resolvedDescEn,
+        descriptionEs: resolvedDescEs,
+        durationMinutes: parsedDuration,
+        price: Number(parsedPrice.toFixed(2)),
+        currency: normalizeCurrencyCode(currency, defaultCurrency),
+        category: category.trim() || 'General',
+        allowsInBusiness,
+        allowsAtHome,
+        active,
+      };
 
-    const res = editingService
-      ? await updateService({ ...editingService, ...payload })
-      : await addService(payload);
+      const res = editingService
+        ? await updateService({ ...editingService, ...payload })
+        : await addService(payload);
 
-    setIsSaving(false);
-
-    if (res.success) {
-      setIsModalOpen(false);
-    } else if (res.error) {
-      setFormError(res.error);
-      addToast('error', t.common.error, res.error);
+      if (res.success) {
+        setIsModalOpen(false);
+      } else if (res.error) {
+        setFormError(res.error);
+        addToast('error', t.common.error, res.error);
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleQuickToggleArchive = async (svc: Service, nextActive: boolean) => {
-    if (!canManageServices) return;
+    if (!canManageServices || togglingServiceId) return;
     setTogglingServiceId(svc.id);
-    const res = await updateService({ ...svc, active: nextActive });
-    setTogglingServiceId(null);
-    if (!res.success && res.error) {
-      addToast('error', t.common.error, res.error);
+    try {
+      const res = await updateService({ ...svc, active: nextActive });
+      if (!res.success && res.error) {
+        addToast('error', t.common.error, res.error);
+      }
+    } finally {
+      setTogglingServiceId(null);
     }
   };
 
@@ -162,12 +178,13 @@ export const ServicesView: React.FC = () => {
   }, [services]);
 
   const filteredServices = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     return services.filter(s => {
-      const name = language === 'es' ? s.nameEs : s.nameEn;
-      const desc = language === 'es' ? s.descriptionEs : s.descriptionEn;
+      const name = language === 'es' ? (s.nameEs || s.nameEn || '') : (s.nameEn || s.nameEs || '');
+      const desc = language === 'es' ? (s.descriptionEs || s.descriptionEn || '') : (s.descriptionEn || s.descriptionEs || '');
       const matchesSearch =
-        name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        desc.toLowerCase().includes(searchQuery.toLowerCase());
+        name.toLowerCase().includes(q) ||
+        desc.toLowerCase().includes(q);
       const matchesCategory = selectedCategory === 'all' || s.category === selectedCategory;
       const matchesStatus =
         statusFilter === 'all' ||
@@ -251,20 +268,20 @@ export const ServicesView: React.FC = () => {
       {/* Services Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
         {filteredServices.map(service => {
-          const name = language === 'es' ? service.nameEs : service.nameEn;
-          const desc = language === 'es' ? service.descriptionEs : service.descriptionEn;
+          const name = language === 'es' ? (service.nameEs || service.nameEn) : (service.nameEn || service.nameEs);
+          const desc = language === 'es' ? (service.descriptionEs || service.descriptionEn) : (service.descriptionEn || service.descriptionEs);
 
           return (
             <div
               key={service.id}
-              className={`p-4 lg:p-5 rounded-2xl lg:rounded-3xl bg-white dark:bg-slate-900 border transition-all flex flex-col justify-between shadow-xs group ${
+              className={`p-4 lg:p-5 rounded-2xl lg:rounded-3xl bg-white dark:bg-slate-900 border transition-all flex flex-col justify-between shadow-xs group min-w-0 ${
                 service.active
                   ? 'border-slate-200/80 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700/60'
                   : 'border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 opacity-85'
               }`}
             >
-              <div>
-                <div className="flex items-start justify-between gap-2.5 lg:gap-3 mb-2">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-start justify-between gap-2.5 lg:gap-3 mb-2">
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400">
                     {service.category}
                   </span>
@@ -290,7 +307,7 @@ export const ServicesView: React.FC = () => {
                   </div>
                 </div>
 
-                <h3 className="text-base lg:text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                <h3 className="text-base lg:text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors break-words">
                   {name}
                 </h3>
 
@@ -389,10 +406,14 @@ export const ServicesView: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label
+                      htmlFor="service-name-en"
+                      className="block font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                    >
                       {t.services.nameEn}
                     </label>
                     <input
+                      id="service-name-en"
                       type="text"
                       required
                       value={nameEn}
@@ -401,10 +422,14 @@ export const ServicesView: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    <label
+                      htmlFor="service-name-es"
+                      className="block font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                    >
                       {t.services.nameEs}
                     </label>
                     <input
+                      id="service-name-es"
                       type="text"
                       value={nameEs}
                       onChange={e => setNameEs(e.target.value)}
@@ -437,7 +462,7 @@ export const ServicesView: React.FC = () => {
                       step={5}
                       required
                       value={durationMinutes}
-                      onChange={e => setDurationMinutes(Number(e.target.value))}
+                      onChange={e => setDurationMinutes(e.target.value)}
                       className="w-full min-h-[44px] lg:min-h-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 font-mono text-base lg:text-xs text-slate-900 dark:text-slate-100"
                     />
                   </div>
@@ -451,7 +476,7 @@ export const ServicesView: React.FC = () => {
                       step="0.01"
                       required
                       value={price}
-                      onChange={e => setPrice(Number(e.target.value))}
+                      onChange={e => setPrice(e.target.value)}
                       className="w-full min-h-[44px] lg:min-h-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 font-mono text-base lg:text-xs text-slate-900 dark:text-slate-100"
                     />
                   </div>

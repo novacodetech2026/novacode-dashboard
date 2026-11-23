@@ -789,6 +789,59 @@ describe('Phase 1 — Critical Data Integrity & Security Regression Suite', () =
       expect(screen.getByText('Set Password & Activate Access')).toBeTruthy();
     });
 
+    it('provides independent accessible password visibility toggles on invitation onboarding without submitting or clearing input', async () => {
+      const completeInvitationOnboarding = vi.fn().mockResolvedValue({ success: true });
+      mockUseApp.mockReturnValue(
+        buildMockContext({
+          isInvitationOnboardingMode: true,
+          authSession: { user: { id: 'u1', email: 'invited@company.com' } },
+          completeInvitationOnboarding,
+        })
+      );
+
+      render(<AuthModal isOpen={true} onClose={vi.fn()} />);
+
+      const passwordInputs = document.querySelectorAll('input[type="password"]');
+      expect(passwordInputs.length).toBe(2);
+      const newPasswordInput = passwordInputs[0] as HTMLInputElement;
+      const confirmPasswordInput = passwordInputs[1] as HTMLInputElement;
+
+      const toggleNewBtn = screen.getByRole('button', { name: 'Show password' }) as HTMLButtonElement;
+      const toggleConfirmBtn = screen.getByRole('button', { name: 'Show confirm password' }) as HTMLButtonElement;
+
+      expect(toggleNewBtn.type).toBe('button');
+      expect(toggleConfirmBtn.type).toBe('button');
+
+      fireEvent.change(newPasswordInput, { target: { value: 'SecretPass123!' } });
+      fireEvent.change(confirmPasswordInput, { target: { value: 'SecretPass123!' } });
+      newPasswordInput.focus();
+      newPasswordInput.setSelectionRange(6, 6);
+
+      fireEvent.click(toggleNewBtn);
+
+      expect(newPasswordInput.type).toBe('text');
+      expect(confirmPasswordInput.type).toBe('password');
+      expect(newPasswordInput.value).toBe('SecretPass123!');
+      expect(screen.getByRole('button', { name: 'Hide password' })).toBeTruthy();
+      expect(completeInvitationOnboarding).not.toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(newPasswordInput.selectionStart).toBe(6);
+        expect(newPasswordInput.selectionEnd).toBe(6);
+      });
+
+      fireEvent.click(toggleConfirmBtn);
+      expect(confirmPasswordInput.type).toBe('text');
+      expect(confirmPasswordInput.value).toBe('SecretPass123!');
+      expect(screen.getByRole('button', { name: 'Hide confirm password' })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
+      expect(newPasswordInput.type).toBe('password');
+      expect(confirmPasswordInput.type).toBe('text');
+      expect(newPasswordInput.value).toBe('SecretPass123!');
+      expect(completeInvitationOnboarding).not.toHaveBeenCalled();
+    });
+
     it('signUpWithEmailPassword refuses public self-registration', async () => {
       const res = await signUpWithEmailPassword('attacker@evil.test', 'Secret123!', 'Rogue Biz');
       expect(res.user).toBeNull();

@@ -65,6 +65,7 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({ appointment, i
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMessage(null);
 
     if (appointmentDuration === null || appointmentDuration <= 0) {
@@ -129,7 +130,7 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({ appointment, i
             {errorMessage && (
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm lg:text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+                <span className="min-w-0 break-words">{errorMessage}</span>
               </div>
             )}
 

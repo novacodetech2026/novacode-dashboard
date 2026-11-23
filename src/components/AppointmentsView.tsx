@@ -14,7 +14,9 @@ import {
   XCircle,
   RotateCcw,
   RefreshCw,
-  Globe
+  Globe,
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 import { AppointmentStatus, LocationType } from '../types';
 import {
@@ -35,12 +37,34 @@ export const AppointmentsView: React.FC = () => {
     updateAppointmentStatus,
     mode,
     reloadLiveAppointments,
-    isLoadingLiveData
+    isLoadingLiveData,
+    liveDataError,
+    liveDataErrorType
   } = useApp();
 
+  const isEs = language === 'es';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedLocation, setSelectedLocation] = useState<'all' | LocationType>('all');
+
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) || selectedStatus !== 'all' || selectedLocation !== 'all';
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setSelectedStatus('all');
+    setSelectedLocation('all');
+  };
+
+  const showLoadingState = mode === 'supabase' && isLoadingLiveData && appointments.length === 0;
+  const showPermissionError =
+    mode === 'supabase' && !isLoadingLiveData && liveDataErrorType === 'permission' && appointments.length === 0;
+  const showConnectionError =
+    mode === 'supabase' &&
+    !isLoadingLiveData &&
+    Boolean(liveDataError) &&
+    liveDataErrorType !== 'permission' &&
+    appointments.length === 0;
 
   const hasOnlineAppointments = useMemo(
     () => appointments.some(a => a.locationType === 'online'),
@@ -204,7 +228,74 @@ export const AppointmentsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Appointments Data Table (Single-DOM stacked cards on mobile, table on lg+) */}
+      {/* Explicit Loading / Error / Filtered Empty / Table States */}
+      {showLoadingState ? (
+        <div
+          aria-busy="true"
+          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 lg:p-6 space-y-3 shadow-xs"
+        >
+          {[0, 1, 2, 3].map(idx => (
+            <div
+              key={idx}
+              className="h-16 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800"
+            />
+          ))}
+        </div>
+      ) : showPermissionError ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-amber-200 dark:border-amber-800/70 p-6 lg:p-10 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="text-base lg:text-sm font-bold text-slate-900 dark:text-slate-100">
+            {isEs ? 'Acceso restringido' : 'Access Restricted'}
+          </h2>
+          <p className="text-sm lg:text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+            {liveDataError}
+          </p>
+        </div>
+      ) : showConnectionError ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-800/70 p-6 lg:p-10 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h2 className="text-base lg:text-sm font-bold text-slate-900 dark:text-slate-100">
+            {isEs ? 'No pudimos cargar las citas' : 'Unable to load appointments'}
+          </h2>
+          <p className="text-sm lg:text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+            {liveDataError}
+          </p>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={reloadLiveAppointments}
+              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm lg:text-xs font-semibold transition-colors"
+            >
+              <RefreshCw className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+              <span>{isEs ? 'Reintentar' : 'Retry'}</span>
+            </button>
+          </div>
+        </div>
+      ) : appointments.length > 0 && filteredAppointments.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 lg:p-12 text-center space-y-3 shadow-xs">
+          <p className="text-base lg:text-sm font-bold text-slate-900 dark:text-slate-100">
+            {t.appointmentsView.emptyTitle}
+          </p>
+          <p className="text-sm lg:text-xs text-slate-500 dark:text-slate-400">
+            {t.appointmentsView.emptyDesc}
+          </p>
+          {hasActiveFilters && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm lg:text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+              >
+                {t.appointmentsView.clearFilters}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="bg-transparent lg:bg-white lg:dark:bg-slate-900 rounded-2xl lg:rounded-3xl lg:border border-slate-200/80 dark:border-slate-800 overflow-hidden lg:shadow-xs">
         <div className="lg:overflow-x-auto">
           <table className="w-full text-left text-sm lg:text-xs block lg:table">
@@ -236,7 +327,7 @@ export const AppointmentsView: React.FC = () => {
                     <tr
                       key={apt.id}
                       onClick={() => setSelectedAppointmentForDetail(apt)}
-                      className="grid grid-cols-[1fr_auto] lg:table-row items-center gap-x-3 gap-y-2 p-4 lg:p-0 bg-white dark:bg-slate-900 rounded-2xl lg:rounded-none border lg:border-0 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition-colors shadow-xs lg:shadow-none"
+                      className="grid grid-cols-[minmax(0,1fr)_auto] lg:table-row items-center gap-x-3 gap-y-2 p-4 lg:p-0 bg-white dark:bg-slate-900 rounded-2xl lg:rounded-none border lg:border-0 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition-colors shadow-xs lg:shadow-none"
                     >
                       {/* Date & Time */}
                       <td className="lg:px-5 lg:py-4 whitespace-nowrap">
@@ -324,6 +415,7 @@ export const AppointmentsView: React.FC = () => {
           <span className="font-mono text-xs lg:text-[11px]">{currentTenant.timezone}</span>
         </div>
       </div>
+      )}
     </div>
   );
 };

@@ -43,6 +43,9 @@ export const SettingsServicesSection: React.FC = () => {
   // Service Form State
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [altName, setAltName] = useState('');
+  const [altDescription, setAltDescription] = useState('');
+  const [showTranslations, setShowTranslations] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState<string>('60');
   const [price, setPrice] = useState<string>('75');
   const [currency, setCurrency] = useState<string>(defaultCurrency);
@@ -52,6 +55,9 @@ export const SettingsServicesSection: React.FC = () => {
     setEditingService(null);
     setName('');
     setDescription('');
+    setAltName('');
+    setAltDescription('');
+    setShowTranslations(false);
     setDurationMinutes('60');
     setPrice('75');
     setCurrency(defaultCurrency);
@@ -64,6 +70,9 @@ export const SettingsServicesSection: React.FC = () => {
     setEditingService(svc);
     setName(isEs ? svc.nameEs || svc.nameEn : svc.nameEn || svc.nameEs);
     setDescription(isEs ? svc.descriptionEs || svc.descriptionEn : svc.descriptionEn || svc.descriptionEs);
+    setAltName(isEs ? svc.nameEn || '' : svc.nameEs || '');
+    setAltDescription(isEs ? svc.descriptionEn || '' : svc.descriptionEs || '');
+    setShowTranslations(false);
     setDurationMinutes(String(svc.durationMinutes || 60));
     setPrice(String(svc.price ?? 0));
     setCurrency(normalizeCurrencyCode(svc.currency, defaultCurrency));
@@ -74,6 +83,7 @@ export const SettingsServicesSection: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     setFormError(null);
 
     const trimmedName = name.trim();
@@ -102,17 +112,27 @@ export const SettingsServicesSection: React.FC = () => {
 
     const normalizedCurrency = normalizeCurrencyCode(currency, defaultCurrency);
     const trimmedDescription = description.trim();
+    const trimmedAltName = altName.trim();
+    const trimmedAltDescription = altDescription.trim();
 
     setIsSaving(true);
     try {
       if (editingService) {
+        const preservedAltName = showTranslations
+          ? (trimmedAltName || (isEs ? editingService.nameEn : editingService.nameEs) || trimmedName)
+          : ((isEs ? editingService.nameEn : editingService.nameEs) || trimmedName);
+
+        const preservedAltDesc = showTranslations
+          ? trimmedAltDescription
+          : (isEs ? (editingService.descriptionEn ?? '') : (editingService.descriptionEs ?? ''));
+
         const res = await updateService({
           ...editingService,
           tenantId: editingService.tenantId || currentTenant.id,
-          nameEn: trimmedName,
-          nameEs: trimmedName,
-          descriptionEn: trimmedDescription,
-          descriptionEs: trimmedDescription,
+          nameEn: isEs ? preservedAltName : trimmedName,
+          nameEs: isEs ? trimmedName : preservedAltName,
+          descriptionEn: isEs ? preservedAltDesc : trimmedDescription,
+          descriptionEs: isEs ? trimmedDescription : preservedAltDesc,
           durationMinutes: parsedDuration,
           price: Number(parsedPrice.toFixed(2)),
           currency: normalizedCurrency,
@@ -124,11 +144,16 @@ export const SettingsServicesSection: React.FC = () => {
         }
       } else {
         const locationTypes = currentTenant.settings?.locationTypes || ['in_business'];
+        const resolvedNameEn = isEs ? (trimmedAltName || trimmedName) : trimmedName;
+        const resolvedNameEs = isEs ? trimmedName : (trimmedAltName || trimmedName);
+        const resolvedDescEn = isEs ? (trimmedAltDescription || trimmedDescription) : trimmedDescription;
+        const resolvedDescEs = isEs ? trimmedDescription : (trimmedAltDescription || trimmedDescription);
+
         const res = await addService({
-          nameEn: trimmedName,
-          nameEs: trimmedName,
-          descriptionEn: trimmedDescription,
-          descriptionEs: trimmedDescription,
+          nameEn: resolvedNameEn,
+          nameEs: resolvedNameEs,
+          descriptionEn: resolvedDescEn,
+          descriptionEs: resolvedDescEs,
           durationMinutes: parsedDuration,
           price: Number(parsedPrice.toFixed(2)),
           currency: normalizedCurrency,
@@ -149,7 +174,7 @@ export const SettingsServicesSection: React.FC = () => {
   };
 
   const handleToggleArchive = async (svc: Service, nextActive: boolean) => {
-    if (!canManageServices) return;
+    if (!canManageServices || busyServiceId) return;
     setBusyServiceId(svc.id);
     try {
       const res = await updateService({
@@ -363,6 +388,49 @@ export const SettingsServicesSection: React.FC = () => {
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
+
+            <div className="md:col-span-12 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowTranslations(prev => !prev)}
+                className="inline-flex items-center gap-1.5 min-h-[44px] lg:min-h-0 px-2 lg:px-0 text-sm lg:text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                <span>
+                  {showTranslations
+                    ? (isEs ? 'Ocultar traducción en inglés' : 'Hide Spanish translation')
+                    : (isEs ? 'Editar traducción en inglés (opcional)' : 'Edit Spanish translation (optional)')}
+                </span>
+              </button>
+
+              {showTranslations && (
+                <div className="mt-2.5 p-3.5 rounded-xl border border-indigo-200/70 dark:border-indigo-900/50 bg-white/80 dark:bg-slate-900/70 grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {isEs ? t.services.nameEn : t.services.nameEs}
+                    </label>
+                    <input
+                      type="text"
+                      value={altName}
+                      onChange={e => setAltName(e.target.value)}
+                      placeholder={isEs ? 'English service name' : 'Nombre del servicio en español'}
+                      className="w-full min-h-[44px] lg:min-h-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {isEs ? t.services.descriptionEn : t.services.descriptionEs}
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={altDescription}
+                      onChange={e => setAltDescription(e.target.value)}
+                      placeholder={isEs ? 'Optional English description' : 'Descripción opcional en español'}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-indigo-200/60 dark:border-indigo-900/50">
@@ -433,10 +501,10 @@ export const SettingsServicesSection: React.FC = () => {
                     : 'border-slate-200/70 dark:border-slate-800/70 bg-slate-100/60 dark:bg-slate-900/50 opacity-85'
                 }`}
               >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                <div className="space-y-2 min-w-0">
+                  <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 break-words">
                         {svcName}
                       </p>
                       <span
@@ -456,7 +524,7 @@ export const SettingsServicesSection: React.FC = () => {
                   </div>
 
                   {svcDesc && (
-                    <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                    <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed break-words">
                       {svcDesc}
                     </p>
                   )}
@@ -469,7 +537,7 @@ export const SettingsServicesSection: React.FC = () => {
                   </span>
 
                   {canManageServices && (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
                         disabled={isBusy}

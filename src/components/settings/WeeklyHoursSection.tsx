@@ -92,6 +92,14 @@ export const WeeklyHoursSection: React.FC = () => {
       );
       return;
     }
+    if (!monday.isClosed && (!monday.open || !monday.close || monday.open >= monday.close)) {
+      setValidationError(
+        isEs
+          ? 'El lunes debe tener una hora de apertura anterior al cierre antes de copiarlo.'
+          : 'Monday must have a valid opening time earlier than its closing time before copying.'
+      );
+      return;
+    }
     setValidationError(null);
     setDraftHours(prev => ({
       ...prev,
@@ -123,6 +131,7 @@ export const WeeklyHoursSection: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     setValidationError(null);
 
     for (const dow of SUNDAY_TO_SATURDAY_ORDER) {
@@ -268,25 +277,25 @@ export const WeeklyHoursSection: React.FC = () => {
               </div>
 
               {!isClosed ? (
-                <div className="flex items-center gap-2 font-mono tabular-nums w-full sm:w-auto">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] sm:flex sm:items-center gap-1.5 sm:gap-2 font-mono tabular-nums w-full sm:w-auto min-w-0">
                   <label className="sr-only">{t.settings.openAt}</label>
                   <input
                     type="time"
                     disabled={!isEditing}
                     value={entry?.open || ''}
                     onChange={e => handleTimeChange(dayIndex, 'open', e.target.value)}
-                    className="min-h-[44px] lg:min-h-0 flex-1 sm:flex-initial px-2.5 py-2 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-70"
+                    className="min-w-0 w-full sm:w-auto min-h-[44px] lg:min-h-0 px-2 sm:px-2.5 py-2 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-70"
                   />
-                  <span className="text-slate-400">—</span>
+                  <span className="text-slate-400 self-center">—</span>
                   <label className="sr-only">{t.settings.closeAt}</label>
                   <input
                     type="time"
                     disabled={!isEditing}
                     value={entry?.close || ''}
                     onChange={e => handleTimeChange(dayIndex, 'close', e.target.value)}
-                    className="min-h-[44px] lg:min-h-0 flex-1 sm:flex-initial px-2.5 py-2 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-70"
+                    className="min-w-0 w-full sm:w-auto min-h-[44px] lg:min-h-0 px-2 sm:px-2.5 py-2 lg:py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-base lg:text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-70"
                   />
-                  {isEditing && (
+                  {isEditing ? (
                     <button
                       type="button"
                       onClick={() => handleClearDay(dayIndex)}
@@ -296,6 +305,8 @@ export const WeeklyHoursSection: React.FC = () => {
                     >
                       <X className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
                     </button>
+                  ) : (
+                    <span className="hidden sm:hidden" />
                   )}
                 </div>
               ) : (

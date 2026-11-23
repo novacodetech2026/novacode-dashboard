@@ -8,6 +8,7 @@ import {
   AppointmentStatus,
   BusinessMember,
   LocationType,
+  Language,
   AuditLogEntry,
   BusinessInvitation,
   InviteOwnerResult,
@@ -1512,7 +1513,8 @@ export async function toggleBusinessActiveInSupabase(
 
 export async function createServiceInSupabase(
   businessId: string,
-  svc: Omit<Service, 'id' | 'tenantId'>
+  svc: Omit<Service, 'id' | 'tenantId'>,
+  preferredLang: Language = 'en'
 ): Promise<{ success: boolean; service?: Service; error?: string }> {
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Supabase client is not connected.' };
@@ -1522,7 +1524,11 @@ export async function createServiceInSupabase(
     return { success: false, error: 'Valid business_id is required to create a service.' };
   }
 
-  const resolvedName = (svc.nameEn || svc.nameEs || '').trim();
+  const resolvedName = (
+    preferredLang === 'es'
+      ? svc.nameEs || svc.nameEn
+      : svc.nameEn || svc.nameEs || ''
+  ).trim();
   if (!resolvedName) {
     return { success: false, error: 'Service name is required.' };
   }
@@ -1535,7 +1541,11 @@ export async function createServiceInSupabase(
     return { success: false, error: 'Service price must be a valid non-negative number.' };
   }
 
-  const resolvedDescription = (svc.descriptionEn || svc.descriptionEs || '').trim();
+  const resolvedDescription = (
+    preferredLang === 'es'
+      ? svc.descriptionEs || svc.descriptionEn || ''
+      : svc.descriptionEn || svc.descriptionEs || ''
+  ).trim();
   const normalizedCurrency = normalizeCurrencyCode(svc.currency, 'USD');
 
   try {
@@ -1562,8 +1572,8 @@ export async function createServiceInSupabase(
         business_id: bizIdValue,
         name_en: svc.nameEn || resolvedName,
         name_es: svc.nameEs || resolvedName,
-        description_en: svc.descriptionEn || resolvedDescription,
-        description_es: svc.descriptionEs || resolvedDescription,
+        description_en: svc.descriptionEn ?? resolvedDescription,
+        description_es: svc.descriptionEs ?? resolvedDescription,
         duration_minutes: durationMinutes,
         price,
         category: svc.category || 'General',
@@ -1599,7 +1609,10 @@ export async function createServiceInSupabase(
   }
 }
 
-export async function updateServiceInSupabase(service: Service): Promise<{ success: boolean; service?: Service; error?: string }> {
+export async function updateServiceInSupabase(
+  service: Service,
+  preferredLang: Language = 'en'
+): Promise<{ success: boolean; service?: Service; error?: string }> {
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Supabase client is not connected.' };
 
@@ -1608,7 +1621,11 @@ export async function updateServiceInSupabase(service: Service): Promise<{ succe
     return { success: false, error: 'Service ID and business_id are required.' };
   }
 
-  const resolvedName = (service.nameEn || service.nameEs || '').trim();
+  const resolvedName = (
+    preferredLang === 'es'
+      ? service.nameEs || service.nameEn
+      : service.nameEn || service.nameEs || ''
+  ).trim();
   if (!resolvedName) {
     return { success: false, error: 'Service name is required.' };
   }
@@ -1621,34 +1638,56 @@ export async function updateServiceInSupabase(service: Service): Promise<{ succe
     return { success: false, error: 'Service price must be a valid non-negative number.' };
   }
 
-  const resolvedDescription = (service.descriptionEn || service.descriptionEs || '').trim();
+  const resolvedDescription = (
+    preferredLang === 'es'
+      ? service.descriptionEs ?? service.descriptionEn ?? ''
+      : service.descriptionEn ?? service.descriptionEs ?? ''
+  ).trim();
   const normalizedCurrency = normalizeCurrencyCode(service.currency, 'USD');
 
   try {
-    const livePayload = {
+    const baseLivePayload = {
       name: resolvedName,
       description: resolvedDescription,
       duration_minutes: durationMinutes,
       price,
       currency: normalizedCurrency,
       is_active: Boolean(service.active),
-      updated_at: new Date().toISOString(),
     };
 
     let { data, error } = await client
       .from('services')
-      .update(livePayload)
+      .update({
+        ...baseLivePayload,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', toDbId(service.id))
       .eq('business_id', bizIdValue)
       .select()
       .single();
 
+    if (
+      error &&
+      (error.code === '42703' || error.code === 'PGRST204') &&
+      error.message?.toLowerCase().includes('updated_at')
+    ) {
+      const retryNoUpdatedAt = await client
+        .from('services')
+        .update(baseLivePayload)
+        .eq('id', toDbId(service.id))
+        .eq('business_id', bizIdValue)
+        .select()
+        .single();
+      data = retryNoUpdatedAt.data;
+      error = retryNoUpdatedAt.error;
+    }
+
     if (error && (error.code === '42703' || error.code === 'PGRST204')) {
       const legacyPayload = {
         name_en: service.nameEn || resolvedName,
         name_es: service.nameEs || resolvedName,
-        description_en: service.descriptionEn || resolvedDescription,
-        description_es: service.descriptionEs || resolvedDescription,
+        description_en: service.descriptionEn ?? resolvedDescription,
+        description_es: service.descriptionEs ?? resolvedDescription,
         duration_minutes: durationMinutes,
         price,
         category: service.category || 'General',

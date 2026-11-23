@@ -1,20 +1,16 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   X, 
   Search, 
-  UserPlus, 
   Check, 
-  Calendar, 
   Clock, 
-  MapPin, 
   Building, 
   Home, 
+  Globe,
   AlertCircle, 
   ArrowRight, 
   ArrowLeft,
-  DollarSign,
-  Sparkles,
   RefreshCw
 } from 'lucide-react';
 import { LocationType, Language } from '../types';
@@ -57,7 +53,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
   const [newClientName, setNewClientName] = useState<string>('');
   const [newClientPhone, setNewClientPhone] = useState<string>('');
   const [newClientEmail, setNewClientEmail] = useState<string>('');
-  const [newClientLanguage, setNewClientLanguage] = useState<Language>(currentTenant.defaultLanguage);
+  const [newClientLanguage, setNewClientLanguage] = useState<Language>(currentTenant.defaultLanguage || 'en');
   const [newClientAddress, setNewClientAddress] = useState<string>('');
 
   // Step 2: Service
@@ -70,7 +66,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
 
   // Step 4: Location & Address
-  const [locationType, setLocationType] = useState<LocationType>('in_business');
+  const initialLocationType: LocationType =
+    Array.isArray(currentTenant.settings?.locationTypes) && currentTenant.settings.locationTypes.length > 0
+      ? currentTenant.settings.locationTypes[0]
+      : 'in_business';
+  const [locationType, setLocationType] = useState<LocationType>(initialLocationType);
   const [atHomeAddress, setAtHomeAddress] = useState<string>('');
   const [appointmentNotes, setAppointmentNotes] = useState<string>('');
 
@@ -78,8 +78,82 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  const prevIsOpenRef = useRef(isOpen);
+  const prevTenantIdRef = useRef(currentTenant.id);
+
+  // Reset wizard fields cleanly whenever modal opens/closes or active tenant changes
+  useEffect(() => {
+    const isOpening = !prevIsOpenRef.current && isOpen;
+    const isClosing = prevIsOpenRef.current && !isOpen;
+    const tenantChanged = prevTenantIdRef.current !== currentTenant.id;
+    prevIsOpenRef.current = isOpen;
+    prevTenantIdRef.current = currentTenant.id;
+
+    if (isOpening || isClosing || tenantChanged) {
+      const defaultLoc: LocationType =
+        Array.isArray(currentTenant.settings?.locationTypes) && currentTenant.settings.locationTypes.length > 0
+          ? currentTenant.settings.locationTypes[0]
+          : 'in_business';
+      setStep(1);
+      setIsCreatingNewClient(false);
+      setSelectedCustomerId('');
+      setClientSearchQuery('');
+      setNewClientName('');
+      setNewClientPhone('');
+      setNewClientEmail('');
+      setNewClientLanguage(currentTenant.defaultLanguage || 'en');
+      setNewClientAddress('');
+      setSelectedServiceId('');
+      setSelectedDate(getDateStringInTimezone(new Date(), currentTenant.timezone));
+      setSelectedTime('');
+      setSelectedStaffId('');
+      setLocationType(defaultLoc);
+      setAtHomeAddress('');
+      setAppointmentNotes('');
+      setValidationError(null);
+      setIsSubmitting(false);
+    }
+  }, [
+    isOpen,
+    currentTenant.id,
+    currentTenant.defaultLanguage,
+    currentTenant.timezone,
+    currentTenant.settings?.locationTypes,
+  ]);
+
   // Selected Service object
   const selectedService = services.find(s => s.id === selectedServiceId);
+
+  // Compute permitted location options based on tenant settings and selected service
+  const locationAvailability = useMemo(() => {
+    const tenantTypes = currentTenant.settings?.locationTypes;
+    const hasExplicitTenantTypes = Array.isArray(tenantTypes) && tenantTypes.length > 0;
+    let inBusiness =
+      (selectedService ? selectedService.allowsInBusiness !== false : true) &&
+      (!hasExplicitTenantTypes || tenantTypes.includes('in_business'));
+    const atHome =
+      (selectedService ? selectedService.allowsAtHome !== false : true) &&
+      (!hasExplicitTenantTypes || tenantTypes.includes('at_home'));
+    const online = hasExplicitTenantTypes && tenantTypes.includes('online');
+
+    if (!inBusiness && !atHome && !online) {
+      inBusiness = true;
+    }
+
+    const allowed: LocationType[] = [];
+    if (inBusiness) allowed.push('in_business');
+    if (atHome) allowed.push('at_home');
+    if (online) allowed.push('online');
+
+    return { inBusiness, atHome, online, allowed };
+  }, [currentTenant.settings?.locationTypes, selectedService]);
+
+  // Keep selected locationType valid when service or tenant configuration changes
+  useEffect(() => {
+    if (!locationAvailability.allowed.includes(locationType)) {
+      setLocationType(locationAvailability.allowed[0] || 'in_business');
+    }
+  }, [locationAvailability, locationType]);
 
   // Dynamic Time Slots generator based on operating hours, special holiday hours, timezone & buffer
   const slotAnalysis = useMemo(() => {
@@ -92,9 +166,9 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
     });
   }, [currentTenant, selectedDate, selectedService?.durationMinutes, appointments, selectedStaffId]);
 
-  // Auto-select first valid slot whenever date, service, or staff changes
+  // Auto-select first valid slot whenever date, service, or staff changes (only during steps 1-3)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || step > 3) return;
     const duration = selectedService?.durationMinutes || 60;
     const firstValid = slotAnalysis.slots.find(
       s => s.isAvailable && !isBookingConflict(selectedDate, s.time, duration, selectedStaffId || undefined)
@@ -109,7 +183,16 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
     if (!currentStillValid) {
       setSelectedTime(firstValid ? firstValid.time : '');
     }
-  }, [isOpen, slotAnalysis.slots, selectedDate, selectedTime, selectedService?.durationMinutes, selectedStaffId, isBookingConflict]);
+  }, [
+    isOpen,
+    step,
+    slotAnalysis.slots,
+    selectedDate,
+    selectedTime,
+    selectedService?.durationMinutes,
+    selectedStaffId,
+    isBookingConflict,
+  ]);
 
   if (!isOpen) return null;
 
@@ -127,6 +210,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
   );
 
   const handleNext = async () => {
+    if (isSubmitting) return;
     setValidationError(null);
 
     if (step === 1) {
@@ -283,7 +367,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
   };
 
   const handleFinalBooking = async () => {
-    if (!selectedService) return;
+    if (isSubmitting || !selectedService) return;
     if (!selectedService.active) {
       setValidationError(t.services.inactiveBookError);
       return;
@@ -293,6 +377,10 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
     const endTime = formatMinutesToTime(endTotalMins);
 
     const cust = selectedCustomer || customers.find(c => c.id === selectedCustomerId);
+    const serviceDisplayName =
+      language === 'es'
+        ? selectedService.nameEs || selectedService.nameEn
+        : selectedService.nameEn || selectedService.nameEs;
 
     setIsSubmitting(true);
     try {
@@ -302,7 +390,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
         customerPhone: cust?.phone || newClientPhone,
         customerLanguage: cust?.preferredLanguage || newClientLanguage,
         serviceId: selectedService.id,
-        serviceName: language === 'es' ? selectedService.nameEs : selectedService.nameEn,
+        serviceName: serviceDisplayName,
         staffId: selectedStaffId || undefined,
         staffName: selectedStaff?.name || undefined,
         date: selectedDate,
@@ -320,10 +408,10 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
       if (result.success) {
         onClose();
       } else {
-        setValidationError(result.error || 'Booking error');
+        setValidationError(result.error || (language === 'es' ? 'Error al crear la cita' : 'Booking error'));
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Booking error';
+      const msg = err instanceof Error ? err.message : (language === 'es' ? 'Error al crear la cita' : 'Booking error');
       setValidationError(msg);
     } finally {
       setIsSubmitting(false);
@@ -373,9 +461,23 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
         {/* Wizard Body */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 lg:space-y-5">
           {validationError && (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm lg:text-xs animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="break-words whitespace-pre-wrap min-w-0">{validationError}</span>
+            <div className="flex items-start justify-between gap-2.5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm lg:text-xs animate-in fade-in">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="break-words whitespace-pre-wrap min-w-0">{validationError}</span>
+              </div>
+              {step === 5 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValidationError(null);
+                    setStep(3);
+                  }}
+                  className="shrink-0 min-h-[36px] px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-900/50 hover:bg-rose-200 dark:hover:bg-rose-900 text-rose-800 dark:text-rose-200 text-xs font-semibold transition-colors"
+                >
+                  {language === 'es' ? 'Cambiar horario' : 'Change Time'}
+                </button>
+              )}
             </div>
           )}
 
@@ -538,29 +640,32 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {activeServices.map(svc => {
                     const isSelected = selectedServiceId === svc.id;
-                    const name = language === 'es' ? svc.nameEs : svc.nameEn;
-                    const desc = language === 'es' ? svc.descriptionEs : svc.descriptionEn;
+                    const name = language === 'es' ? (svc.nameEs || svc.nameEn) : (svc.nameEn || svc.nameEs);
+                    const desc =
+                      language === 'es'
+                        ? svc.descriptionEs || svc.descriptionEn
+                        : svc.descriptionEn || svc.descriptionEs;
 
                     return (
                       <button
                         key={svc.id}
                         type="button"
                         onClick={() => setSelectedServiceId(svc.id)}
-                        className={`p-4 rounded-2xl text-left border transition-all ${
+                        className={`p-4 rounded-2xl text-left border transition-all min-w-0 ${
                           isSelected
                             ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 shadow-sm ring-1 ring-indigo-500'
                             : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
+                          <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 break-words min-w-0">
                             {name}
                           </span>
                           <span className="text-sm lg:text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400 shrink-0">
                             {currentTenant.currencySymbol}{svc.price.toFixed(2)}
                           </span>
                         </div>
-                        <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                        <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 break-words">
                           {desc}
                         </p>
                         <div className="flex items-center gap-3 text-xs lg:text-[11px] text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
@@ -569,7 +674,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
                             {svc.durationMinutes} {t.appointment.minutes}
                           </span>
                           <span>·</span>
-                          <span>{svc.category}</span>
+                          <span className="truncate">{svc.category}</span>
                         </div>
                       </button>
                     );
@@ -710,48 +815,76 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
           {step === 4 && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setLocationType('in_business')}
-                  className={`p-4 rounded-2xl text-left border transition-all ${
-                    locationType === 'in_business'
-                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-1 ring-indigo-500'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2">
-                    <Building className="w-4 h-4" />
-                  </div>
-                  <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
-                    {t.bookingModal.inBusinessOption}
-                  </p>
-                  <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {t.bookingModal.inBusinessDesc}
-                  </p>
-                  <p className="text-xs lg:text-[11px] text-indigo-600 dark:text-indigo-400 font-medium mt-2">
-                    📍 {currentTenant.address}
-                  </p>
-                </button>
+                {locationAvailability.inBusiness && (
+                  <button
+                    type="button"
+                    onClick={() => setLocationType('in_business')}
+                    className={`p-4 rounded-2xl text-left border transition-all min-w-0 ${
+                      locationType === 'in_business'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-1 ring-indigo-500'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2">
+                      <Building className="w-4 h-4" />
+                    </div>
+                    <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
+                      {t.bookingModal.inBusinessOption}
+                    </p>
+                    <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      {t.bookingModal.inBusinessDesc}
+                    </p>
+                    {currentTenant.address && (
+                      <p className="text-xs lg:text-[11px] text-indigo-600 dark:text-indigo-400 font-medium mt-2 break-words">
+                        📍 {currentTenant.address}
+                      </p>
+                    )}
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => setLocationType('at_home')}
-                  className={`p-4 rounded-2xl text-left border transition-all ${
-                    locationType === 'at_home'
-                      ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-1 ring-indigo-500'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2">
-                    <Home className="w-4 h-4" />
-                  </div>
-                  <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
-                    {t.bookingModal.atHomeOption}
-                  </p>
-                  <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {t.bookingModal.atHomeDesc}
-                  </p>
-                </button>
+                {locationAvailability.atHome && (
+                  <button
+                    type="button"
+                    onClick={() => setLocationType('at_home')}
+                    className={`p-4 rounded-2xl text-left border transition-all min-w-0 ${
+                      locationType === 'at_home'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-1 ring-indigo-500'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2">
+                      <Home className="w-4 h-4" />
+                    </div>
+                    <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
+                      {t.bookingModal.atHomeOption}
+                    </p>
+                    <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      {t.bookingModal.atHomeDesc}
+                    </p>
+                  </button>
+                )}
+
+                {locationAvailability.online && (
+                  <button
+                    type="button"
+                    onClick={() => setLocationType('online')}
+                    className={`p-4 rounded-2xl text-left border transition-all min-w-0 ${
+                      locationType === 'online'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-1 ring-indigo-500'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-sky-100 dark:bg-sky-950 flex items-center justify-center text-sky-600 dark:text-sky-400 mb-2">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <p className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100">
+                      {t.settings.locationOnline}
+                    </p>
+                    <p className="text-xs lg:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      {language === 'es' ? 'Sesión remota por videollamada o enlace en línea' : 'Remote session via video call or online link'}
+                    </p>
+                  </button>
+                )}
               </div>
 
               {locationType === 'at_home' && (
@@ -789,38 +922,44 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
           {step === 5 && selectedService && (
             <div className="space-y-4">
               <div className="p-4 lg:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
-                  <span className="text-sm lg:text-xs text-slate-500">{t.bookingModal.summaryClient}</span>
-                  <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 text-right">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
+                  <span className="text-sm lg:text-xs text-slate-500 shrink-0">{t.bookingModal.summaryClient}</span>
+                  <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
                     {selectedCustomer?.name || newClientName}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
-                  <span className="text-sm lg:text-xs text-slate-500">{t.bookingModal.summaryService}</span>
-                  <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 text-right">
-                    {language === 'es' ? selectedService.nameEs : selectedService.nameEn}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
+                  <span className="text-sm lg:text-xs text-slate-500 shrink-0">{t.bookingModal.summaryService}</span>
+                  <span className="text-sm lg:text-xs font-bold text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
+                    {language === 'es'
+                      ? selectedService.nameEs || selectedService.nameEn
+                      : selectedService.nameEn || selectedService.nameEs}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
-                  <span className="text-sm lg:text-xs text-slate-500">{t.bookingModal.summaryDateTime}</span>
-                  <span className="text-sm lg:text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 text-right">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
+                  <span className="text-sm lg:text-xs text-slate-500 shrink-0">{t.bookingModal.summaryDateTime}</span>
+                  <span className="text-sm lg:text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 text-right break-words min-w-0">
                     {selectedDate} @ {selectedTime} ({selectedService.durationMinutes} min)
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
-                  <span className="text-sm lg:text-xs text-slate-500">{t.bookingModal.summaryStaff}</span>
-                  <span className="text-sm lg:text-xs font-medium text-slate-900 dark:text-slate-100 text-right">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
+                  <span className="text-sm lg:text-xs text-slate-500 shrink-0">{t.bookingModal.summaryStaff}</span>
+                  <span className="text-sm lg:text-xs font-medium text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
                     {selectedStaff?.name || t.bookingModal.anyStaff}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
-                  <span className="text-sm lg:text-xs text-slate-500">{t.bookingModal.summaryLocation}</span>
-                  <span className="text-sm lg:text-xs font-medium text-slate-900 dark:text-slate-100 text-right">
-                    {locationType === 'at_home' ? `${t.appointment.atHome} (${atHomeAddress})` : t.appointment.inBusiness}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-700">
+                  <span className="text-sm lg:text-xs text-slate-500 shrink-0">{t.bookingModal.summaryLocation}</span>
+                  <span className="text-sm lg:text-xs font-medium text-slate-900 dark:text-slate-100 text-right break-words min-w-0">
+                    {locationType === 'at_home'
+                      ? `${t.appointment.atHome} (${atHomeAddress})`
+                      : locationType === 'online'
+                      ? t.settings.locationOnline
+                      : t.appointment.inBusiness}
                   </span>
                 </div>
 

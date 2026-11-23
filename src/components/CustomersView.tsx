@@ -47,10 +47,21 @@ export const CustomersView: React.FC = () => {
 
   // Editing notes state inside profile drawer
   const [editNotes, setEditNotes] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [notesSavedFeedback, setNotesSavedFeedback] = useState(false);
+
+  // Add customer submission & validation state
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [createCustomerError, setCreateCustomerError] = useState<string | null>(null);
 
   // Reset drawer & search cleanly when switching business tenants
   useEffect(() => {
     setSelectedCustomer(null);
+    setIsAddCustomerOpen(false);
+    setCreateCustomerError(null);
+    setNotesError(null);
+    setNotesSavedFeedback(false);
     setSearchQuery('');
     setCustLanguage(currentTenant.defaultLanguage || 'en');
   }, [currentTenant.id, currentTenant.defaultLanguage]);
@@ -66,22 +77,73 @@ export const CustomersView: React.FC = () => {
     });
   }, [customers, searchQuery]);
 
+  const openAddCustomerModal = () => {
+    setName('');
+    setPhone('');
+    setEmail('');
+    setCustLanguage(currentTenant.defaultLanguage || 'en');
+    setAddress('');
+    setNotes('');
+    setCreateCustomerError(null);
+    setIsAddCustomerOpen(true);
+  };
+
+  const closeAddCustomerModal = () => {
+    if (isCreatingCustomer) return;
+    setIsAddCustomerOpen(false);
+    setCreateCustomerError(null);
+  };
+
   const handleOpenProfile = (cust: Customer) => {
     setSelectedCustomer(cust);
     setEditNotes(cust.notes || '');
+    setNotesError(null);
+    setNotesSavedFeedback(false);
   };
 
-  const handleSaveNotes = () => {
-    if (selectedCustomer) {
-      updateCustomerNotes(selectedCustomer.id, editNotes);
+  const handleSaveNotes = async () => {
+    if (!selectedCustomer || isSavingNotes) return;
+    setIsSavingNotes(true);
+    setNotesError(null);
+    setNotesSavedFeedback(false);
+    try {
+      const res = (await updateCustomerNotes(selectedCustomer.id, editNotes)) as
+        | { success?: boolean; error?: string }
+        | void;
+      if (res && res.success === false) {
+        setNotesError(
+          res.error || (isEs ? 'No pudimos guardar las notas del cliente.' : 'Unable to save customer notes.')
+        );
+        return;
+      }
       setSelectedCustomer(prev => (prev ? { ...prev, notes: editNotes } : null));
+      setNotesSavedFeedback(true);
+    } catch (err: unknown) {
+      setNotesError(
+        err instanceof Error
+          ? err.message
+          : isEs
+          ? 'No pudimos guardar las notas del cliente.'
+          : 'Unable to save customer notes.'
+      );
+    } finally {
+      setIsSavingNotes(false);
     }
   };
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
+    if (isCreatingCustomer) return;
+    setCreateCustomerError(null);
 
+    if (!name.trim() || !phone.trim()) {
+      setCreateCustomerError(
+        isEs ? 'El nombre completo y el teléfono son obligatorios.' : 'Full name and phone are required.'
+      );
+      return;
+    }
+
+    setIsCreatingCustomer(true);
     try {
       await addCustomer({
         name: name.trim(),
@@ -98,8 +160,16 @@ export const CustomersView: React.FC = () => {
       setEmail('');
       setAddress('');
       setNotes('');
-    } catch {
-      // Error toast is handled safely by AppContext; keep modal open for retry
+    } catch (err: unknown) {
+      setCreateCustomerError(
+        err instanceof Error
+          ? err.message
+          : isEs
+          ? 'No pudimos crear el cliente. Inténtalo de nuevo.'
+          : 'Unable to create customer. Please try again.'
+      );
+    } finally {
+      setIsCreatingCustomer(false);
     }
   };
 
@@ -142,7 +212,7 @@ export const CustomersView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setIsAddCustomerOpen(true)}
+            onClick={openAddCustomerModal}
             className="flex items-center justify-center gap-1.5 min-h-[44px] lg:min-h-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm lg:text-xs font-semibold shadow-xs transition-colors whitespace-nowrap self-start sm:self-auto"
           >
             <UserPlus className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
@@ -233,7 +303,7 @@ export const CustomersView: React.FC = () => {
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => setIsAddCustomerOpen(true)}
+              onClick={openAddCustomerModal}
               className="inline-flex items-center justify-center gap-1.5 min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm lg:text-xs font-semibold shadow-xs transition-colors"
             >
               <UserPlus className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
@@ -280,7 +350,7 @@ export const CustomersView: React.FC = () => {
                     <tr
                       key={cust.id}
                       onClick={() => handleOpenProfile(cust)}
-                      className="grid grid-cols-[1fr_auto] lg:table-row items-center gap-x-3 gap-y-2 p-4 lg:p-0 bg-white dark:bg-slate-900 rounded-2xl lg:rounded-none border lg:border-0 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition-colors shadow-xs lg:shadow-none"
+                      className="grid grid-cols-[minmax(0,1fr)_auto] lg:table-row items-center gap-x-3 gap-y-2 p-4 lg:p-0 bg-white dark:bg-slate-900 rounded-2xl lg:rounded-none border lg:border-0 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition-colors shadow-xs lg:shadow-none"
                     >
                       <td className="col-span-2 lg:col-span-1 lg:px-5 lg:py-4 min-w-0">
                         <div className="flex items-center gap-3 min-w-0">
@@ -294,7 +364,7 @@ export const CustomersView: React.FC = () => {
                         </div>
                       </td>
 
-                      <td className="lg:px-5 lg:py-4 whitespace-nowrap font-mono tabular-nums text-sm lg:text-xs text-slate-700 dark:text-slate-300">
+                      <td className="lg:px-5 lg:py-4 whitespace-nowrap font-mono tabular-nums text-sm lg:text-xs text-slate-700 dark:text-slate-300 min-w-0 truncate">
                         {cust.phone || '—'}
                       </td>
 
@@ -308,7 +378,7 @@ export const CustomersView: React.FC = () => {
                         {cust.totalAppointments || 0}
                       </td>
 
-                      <td className="col-span-2 lg:col-span-1 lg:px-5 lg:py-4 lg:max-w-xs truncate text-sm lg:text-xs text-slate-500">
+                      <td className="col-span-2 lg:col-span-1 lg:px-5 lg:py-4 lg:max-w-xs truncate text-sm lg:text-xs text-slate-500 min-w-0">
                         {cust.notes || <span className="text-slate-300 italic">—</span>}
                       </td>
 
@@ -401,17 +471,37 @@ export const CustomersView: React.FC = () => {
                   </label>
                   <button
                     type="button"
+                    disabled={isSavingNotes}
                     onClick={handleSaveNotes}
-                    className="inline-flex items-center gap-1.5 min-h-[44px] lg:min-h-0 px-3 lg:px-0 text-sm lg:text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 min-h-[44px] lg:min-h-0 px-3 lg:px-0 text-sm lg:text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+                    {isSavingNotes ? (
+                      <RefreshCw className="w-4 h-4 lg:w-3.5 lg:h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
+                    )}
                     <span>{t.common.save}</span>
                   </button>
                 </div>
+                {notesError && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{notesError}</span>
+                  </div>
+                )}
+                {notesSavedFeedback && !notesError && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    {isEs ? 'Notas guardadas' : 'Notes saved'}
+                  </p>
+                )}
                 <textarea
                   rows={3}
                   value={editNotes}
-                  onChange={e => setEditNotes(e.target.value)}
+                  onChange={e => {
+                    setEditNotes(e.target.value);
+                    setNotesSavedFeedback(false);
+                    setNotesError(null);
+                  }}
                   placeholder={t.bookingModal.notesPlaceholder}
                   className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-base lg:text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
@@ -484,15 +574,22 @@ export const CustomersView: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddCustomerOpen(false)}
-                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] lg:min-w-0 lg:min-h-0 p-2 lg:p-1.5 rounded-xl lg:rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                disabled={isCreatingCustomer}
+                onClick={closeAddCustomerModal}
+                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] lg:min-w-0 lg:min-h-0 p-2 lg:p-1.5 rounded-xl lg:rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0 disabled:opacity-50"
               >
                 <X className="w-5 h-5 lg:w-4 lg:h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateCustomer} className="flex flex-col flex-1 min-h-0">
+            <form onSubmit={handleCreateCustomer} noValidate className="flex flex-col flex-1 min-h-0">
               <div className="flex-1 overflow-y-auto p-4 lg:p-5 space-y-4">
+                {createCustomerError && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm lg:text-xs">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="break-words min-w-0">{createCustomerError}</span>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm lg:text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     {t.customers.fullName} *
@@ -580,16 +677,19 @@ export const CustomersView: React.FC = () => {
               <div className="flex items-center justify-end gap-2.5 p-4 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] lg:pb-5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsAddCustomerOpen(false)}
-                  className="min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl text-sm lg:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  disabled={isCreatingCustomer}
+                  onClick={closeAddCustomerModal}
+                  className="min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl text-sm lg:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
                 >
                   {t.common.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl text-sm lg:text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+                  disabled={isCreatingCustomer}
+                  className="inline-flex items-center justify-center gap-1.5 min-h-[44px] lg:min-h-0 px-4 py-2 rounded-xl text-sm lg:text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white shadow-xs transition-colors"
                 >
-                  {t.customers.saveCustomer}
+                  {isCreatingCustomer && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{t.customers.saveCustomer}</span>
                 </button>
               </div>
             </form>
